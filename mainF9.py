@@ -45,7 +45,7 @@ from ortools.sat.python import cp_model
 import pulp
 from dataclasses import dataclass
 from pathlib import Path
-
+import io
 # Create outputs directory first
 Path('outputs').mkdir(exist_ok=True)
 Path('outputs/charts').mkdir(exist_ok=True)
@@ -2050,7 +2050,7 @@ def show_dashboard_tab(config):
     with col2:
         st.subheader("🎯 Quick Actions")
 
-        if st.button("🔄 Run Optimization", type="primary", use_container_width=True):
+        if st.button("🔄 Run Optimization", key="run_optimization_btn", type="primary", use_container_width=True):
             if st.session_state.solver and st.session_state.data_loaded:
                 with st.spinner("🔧 Optimizing schedule..."):
                     try:
@@ -2069,7 +2069,6 @@ def show_dashboard_tab(config):
                             except Exception as e:
                                 st.warning(f"Metrics calculation error: {str(e)}")
                                 st.success("✅ Optimization completed successfully!")
-                            st.success(f"✅ Optimization completed! Coverage: {metrics['coverage_percentage']:.1f}%, Cost: EGP{metrics['total_cost']:,.0f}")
                             st.rerun()
                         else:
                             st.error(f"❌ Optimization failed: {results.get('error', 'Unknown error')}")
@@ -2078,7 +2077,7 @@ def show_dashboard_tab(config):
             else:
                 st.warning("⚠️ Please load data first!")
 
-        if st.button("📊 Generate Sample Data", use_container_width=True):
+        if st.button("📊 Generate Sample Data", key="generate_sample_btn", use_container_width=True):
             try:
                 filename = SampleDataGenerator.save_sample_data()
                 st.session_state.sample_generated = True
@@ -2086,16 +2085,22 @@ def show_dashboard_tab(config):
             except Exception as e:
                 st.error(f"❌ Error generating sample data: {str(e)}")
 
-        if st.button("📤 Publish Schedule", use_container_width=True):
+        if st.button("📤 Publish Schedule", key="publish_schedule_btn", use_container_width=True):
             if st.session_state.optimization_results:
                 try:
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     published_file = f'outputs/existing_schedule_published_{timestamp}.xlsx'
-
+                    
                     if st.session_state.optimization_results.get('assignments'):
                         assignments_df = pd.DataFrame(st.session_state.optimization_results['assignments'])
                         assignments_df.to_excel(published_file, index=False)
+                        
+                        # Store the published file path in session state
+                        st.session_state.published_file = published_file
+                        st.session_state.published_timestamp = timestamp
+                        
                         st.success(f"✅ Schedule published: {published_file}")
+                        st.rerun()
                     else:
                         st.warning("⚠️ No assignments to publish")
                 except Exception as e:
@@ -2103,7 +2108,24 @@ def show_dashboard_tab(config):
             else:
                 st.warning("⚠️ No optimization results to publish!")
 
-        if st.button("🧪 Test Run", use_container_width=True):
+        # Download button for published schedule (appears after publishing)
+        if hasattr(st.session_state, 'published_file') and st.session_state.published_file:
+            try:
+                import os
+                if os.path.exists(st.session_state.published_file):
+                    with open(st.session_state.published_file, 'rb') as file:
+                        st.download_button(
+                            label="⬇️ Download Published Schedule",
+                            data=file,
+                            file_name=f"schedule_published_{st.session_state.published_timestamp}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="download_published_schedule_btn",
+                            use_container_width=True
+                        )
+            except Exception as e:
+                st.error(f"❌ Error preparing download: {str(e)}")
+
+        if st.button("🧪 Test Run", key="test_run_btn", use_container_width=True):
             try:
                 # Generate and load sample data
                 filename = SampleDataGenerator.save_sample_data()
